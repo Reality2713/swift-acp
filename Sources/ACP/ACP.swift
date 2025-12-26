@@ -2,11 +2,13 @@
 //  ACP.swift
 //  swift-acp
 //
-//  Agent Client Protocol (ACP) Swift SDK
-//  https://agentclientprotocol.com
+//  Agent Communication Protocol (ACP) Swift SDK
+//  https://agentcommunicationprotocol.dev
 //
 //  A protocol for connecting any editor to any AI coding agent.
 //
+
+import Foundation
 
 // MARK: - Public API Exports
 
@@ -66,3 +68,31 @@ public enum RequestID: Codable, Hashable, Sendable, ExpressibleByStringLiteral, 
 
 public typealias TerminalID = String
 public typealias PermissionOptionID = String
+
+// MARK: - Transport Errors
+
+public enum TransportError: Error, LocalizedError {
+    case notConnected
+    case alreadyConnected
+    case disconnected
+    case failedToLaunch(Error)
+    case sendFailed(String)
+    case connectionFailed(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .notConnected:
+            return "Not connected to agent"
+        case .alreadyConnected:
+            return "Already connected to agent"
+        case .disconnected:
+            return "Agent connection was closed"
+        case .failedToLaunch(let error):
+            return "Failed to launch agent: \(error.localizedDescription)"
+        case .sendFailed(let reason):
+            return "Failed to send message: \(reason)"
+        case .connectionFailed(let reason):
+            return "Connection failed: \(reason)"
+        }
+    }
+}

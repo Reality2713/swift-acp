@@ -8,7 +8,7 @@
 import Foundation
 
 /// Transport layer that communicates with an agent process via stdin/stdout
-public actor ProcessTransport {
+actor ProcessTransport {
     
     // MARK: - Properties
     
@@ -397,31 +397,6 @@ public actor ProcessTransport {
         case .request(let id, let method, _):
             print("[ACP Transport] Handling request: \(method), id: \(id)")
             await messageHandler?(message)
-        }
-    }
-}
-
-// MARK: - Errors
-
-public enum TransportError: Error, LocalizedError {
-    case notConnected
-    case alreadyConnected
-    case disconnected
-    case failedToLaunch(Error)
-    case sendFailed(String)
-    
-    public var errorDescription: String? {
-        switch self {
-        case .notConnected:
-            return "Not connected to agent"
-        case .alreadyConnected:
-            return "Already connected to agent"
-        case .disconnected:
-            return "Agent connection was closed"
-        case .failedToLaunch(let error):
-            return "Failed to launch agent: \(error.localizedDescription)"
-        case .sendFailed(let reason):
-            return "Failed to send message: \(reason)"
         }
     }
 }
