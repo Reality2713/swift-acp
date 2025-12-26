@@ -1,82 +1,77 @@
-# swift-acp
+# swift-acp 🤖
 
-Swift SDK for the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) — a standard for connecting code editors to AI coding agents.
+> **The canonical Swift SDK for the Agent Client Protocol (ACP).**
 
-## Overview
+`swift-acp` provides a native, high-level implementation of the [Agent Client Protocol](https://agentclientprotocol.com/) for macOS, iOS, and visionOS. It is designed to be the canonical bridge between Apple's platforms and AI coding agents (Claude Code, Gemini CLI, etc.).
 
-`swift-acp` enables your macOS/iOS/visionOS app to host AI coding agents like Claude Code, Gemini CLI, and others. Users bring their own agent subscription — you provide the integration.
+---
+
+## Why swift-acp?
+
+Native AI coding agents require a robust, asynchronous transport layer to communicate with host applications. `swift-acp` handles the heavy lifting:
+
+- 🚀 **Asynchronous Transport**: Clean `async/await` API for all JSON-RPC 2.0 communications.
+- 🛠️ **Full Protocol Support**: Implements the complete ACP specification (sessions, prompts, tool calls, streaming).
+- 🛡️ **Permission System**: Type-safe callbacks for user-in-the-loop authorization.
+- 🍏 **Platform Optimized**: Built with Swift 6 and designed for modern Apple platform concurrency.
+
+---
 
 ## Installation
 
-Add to your `Package.swift`:
+Add the dependency to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/your-org/swift-acp.git", from: "0.1.0")
+    .package(url: "https://github.com/elkraneo/swift-acp.git", branch: "main")
 ]
 ```
+
+---
 
 ## Quick Start
 
 ```swift
 import ACP
 
-// Create client for Claude Code
+// 1. Create a client (e.g., for Claude Code)
 let client = ACPClient(
     command: "claude",
     arguments: ["--acp"],
-    clientInfo: ClientInfo(name: "MyApp", version: "1.0")
+    clientInfo: ClientInfo(name: "MyIDE", version: "1.0")
 )
 
-// Connect and initialize
+// 2. Connect and initialize
 try await client.connect()
 
-// Create a session
+// 3. Create a session in your project root
+let projectURL = URL(fileURLWithPath: "/path/to/project")
 let sessionId = try await client.newSession(workingDirectory: projectURL)
 
-// Send a prompt
-let response = try await client.prompt("What files are in this directory?")
+// 4. Send a prompt
+let response = try await client.prompt("Analyze the current directory")
 ```
 
-## Handling Agent Callbacks
+---
 
-Implement `ACPClientDelegate` to receive streaming updates and handle permission requests:
+## Handling Agent Actions
+
+Implement `ACPClientDelegate` to handle the agent's interaction with your app.
 
 ```swift
 class MyAgentHandler: ACPClientDelegate {
     func client(_ client: ACPClient, didReceiveUpdate update: SessionUpdate) {
-        // Handle streaming message chunks, tool calls, plans
-        if let chunks = update.messageChunks {
-            for chunk in chunks {
-                print(chunk.text ?? "")
-            }
-        }
+        // Handle streaming text, tool progress, and plans
     }
     
     func client(_ client: ACPClient, requestPermission request: RequestPermissionRequest) async -> PermissionOptionID {
-        // Show UI for user approval
-        return "allow_once"  // or "reject_once"
-    }
-    
-    func client(_ client: ACPClient, readFile path: String) async throws -> String {
-        return try String(contentsOfFile: path)
-    }
-    
-    func client(_ client: ACPClient, writeFile path: String, content: String) async throws {
-        try content.write(toFile: path, atomically: true, encoding: .utf8)
+        // Show a native dialog: allow_once, allow_always, reject
+        return "allow_once"
     }
 }
 ```
 
-## Supported Agents
-
-Any ACP-compatible agent works with this SDK:
-
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
-- [Gemini CLI](https://github.com/google-gemini/gemini-cli)
-- [Goose](https://block.github.io/goose)
-- [OpenHands](https://docs.openhands.dev)
-- [And many more...](https://agentclientprotocol.com/overview/agents)
+---
 
 ## Requirements
 
@@ -85,36 +80,16 @@ Any ACP-compatible agent works with this SDK:
 
 ## Architecture
 
-```
-┌─────────────────────────┐
-│      Your App           │
-│  ┌───────────────────┐  │
-│  │    ACPClient      │  │
-│  │  (MainActor)      │  │
-│  └─────────┬─────────┘  │
-│            │            │
-│  ┌─────────▼─────────┐  │
-│  │ ProcessTransport  │  │
-│  │   (actor)         │  │
-│  └─────────┬─────────┘  │
-└────────────┼────────────┘
-             │ stdin/stdout
-             │ JSON-RPC 2.0
-┌────────────▼────────────┐
-│    External Agent       │
-│  (Claude, Gemini, etc)  │
-└─────────────────────────┘
-```
+`swift-acp` uses a multi-layered approach to ensure thread safety and performance:
+
+1.  **ACPClient**: The high-level interface (MainActor-isolated) for your UI.
+2.  **ProcessTransport**: An actor-based layer managing the underlying shell process and JSON-RPC stream.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT © [elkraneo](https://github.com/elkraneo)
 
-## Contributing
+---
 
-Contributions welcome! Please open an issue or PR.
-
-## Acknowledgments
-
-- [Agent Client Protocol](https://agentclientprotocol.com/) by Zed Industries
-- [Preflight](https://github.com/your-org/preflight) — the first ACP client for 3D/USD workflows
+> [!NOTE]
+> This SDK was extracted from the **Preflight** project as a standalone library to serve as a reference implementation for the ACP community.
