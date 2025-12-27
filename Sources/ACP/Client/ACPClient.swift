@@ -108,6 +108,11 @@ public final class ACPClient: Sendable {
 
         self.agentInfo = response.agentInfo
         self.agentCapabilities = response.capabilities
+        
+        print("[ACP] 🤝 Connected to agent: \(response.agentInfo.name) (\(response.agentInfo.version))")
+        if let agentCaps = response.capabilities.mcpCapabilities {
+            print("[ACP]    Agent MCP capabilities: \(agentCaps)")
+        }
 
         return response
     }
@@ -140,6 +145,11 @@ public final class ACPClient: Sendable {
             method: "session/new",
             params: request
         )
+
+        print("[ACP] 🎫 Session created: \(response.sessionId)")
+        if let modes = response.modes {
+            print("[ACP]    Available modes: \(modes.available.map { $0.id })")
+        }
 
         currentSessionId = response.sessionId
         return response.sessionId
@@ -255,6 +265,15 @@ public final class ACPClient: Sendable {
 
     private func handleIncomingMessage(_ message: IncomingMessage) async {
         switch message {
+        case .notification(let method, _):
+            print("[ACP] 📥 Received notification: \(method)")
+        case .request(let id, let method, _):
+            print("[ACP] 📥 Received request: \(method) (id: \(id))")
+        default:
+            break
+        }
+        
+        switch message {
         case .notification(let method, let params):
             await handleNotification(method: method, params: params)
 
@@ -337,15 +356,19 @@ public final class ACPClient: Sendable {
                 }
 
             case "tools/list":
+                print("[ACPClient] 🛠️ Received tools/list request")
                 if let tools = await delegate?.listTools(self) {
+                    print("[ACPClient]   Providing \(tools.count) tools")
                     let response = ListToolsResponse(tools: tools)
                     try await transport.sendResponse(id: id, result: response)
                 } else {
+                    print("[ACPClient]   No tools provided (delegate nil)")
                     let response = ListToolsResponse(tools: [])
                     try await transport.sendResponse(id: id, result: response)
                 }
 
             case "tools/call":
+                print("[ACPClient] ⚡️ Received tools/call request")
                 guard let params,
                       let request = try? decoder.decode(CallToolRequest.self, from: params) else {
                     try await transport.sendErrorResponse(id: id, code: JSONRPCError.invalidParams, message: "Invalid params")
