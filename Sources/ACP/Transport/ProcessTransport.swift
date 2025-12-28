@@ -194,6 +194,7 @@ actor ProcessTransport {
     ) async throws {
         // Encode using JSONSerialization for the outer structure
         let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
         let resultData = try encoder.encode(result)
         let resultJSON = try JSONSerialization.jsonObject(with: resultData)
         
@@ -253,6 +254,9 @@ actor ProcessTransport {
         }
         
         let encoder = JSONEncoder()
+        // CRITICAL: Prevent Swift from escaping forward slashes ("/" → "\/")
+        // which breaks parsers like codex-acp that expect unescaped slashes
+        encoder.outputFormatting = .withoutEscapingSlashes
         let data = try encoder.encode(message)
         
         // Debug Log

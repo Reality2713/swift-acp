@@ -131,9 +131,9 @@ public final class ACPClient: Sendable {
     /// - Parameters:
     ///   - workingDirectory: Working directory for the session
     ///   - model: Model to use (e.g., "haiku", "sonnet", "opus")
-    /// - Returns: The new session ID
+    /// - Returns: The full session response including available models
     @discardableResult
-    public func newSession(workingDirectory: URL? = nil, model: String? = nil, meta: [String: AnyCodable]? = nil) async throws -> SessionID {
+    public func newSession(workingDirectory: URL? = nil, model: String? = nil, meta: [String: AnyCodable]? = nil) async throws -> NewSessionResponse {
         let request = NewSessionRequest(
             cwd: workingDirectory?.path ?? FileManager.default.currentDirectoryPath,
             mcpServers: capabilities.mcpServers ?? [],
@@ -150,10 +150,15 @@ public final class ACPClient: Sendable {
         if let modes = response.modes {
             print("[ACP]    Available modes: \(modes.available.map { $0.id })")
         }
+        if let models = response.models {
+            print("[ACP]    Available models: \(models.availableModels.map { $0.name })")
+            print("[ACP]    Current model: \(models.currentModelId ?? "none")")
+        }
 
         currentSessionId = response.sessionId
-        return response.sessionId
+        return response
     }
+
 
     /// Load an existing session
     /// - Parameter sessionId: Session ID to load

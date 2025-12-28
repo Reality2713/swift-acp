@@ -127,6 +127,7 @@ actor HTTPTransport {
         result: Result
     ) async throws {
         let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
         let resultData = try encoder.encode(result)
         let resultJSON = try JSONSerialization.jsonObject(with: resultData)
 
@@ -164,6 +165,7 @@ actor HTTPTransport {
 
     private func send<T: Encodable>(_ message: T) async throws {
         let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
         let data = try encoder.encode(message)
         try await postJSON(data)
     }

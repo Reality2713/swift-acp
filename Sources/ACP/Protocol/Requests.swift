@@ -152,6 +152,9 @@ public struct NewSessionResponse: Codable, Sendable {
     
     /// Initial mode state (if supported)
     public var modes: SessionModeState?
+    
+    /// Initial model state (if supported)
+    public var models: SessionModelState?
 }
 
 /// Session mode state
@@ -180,6 +183,35 @@ public struct SessionMode: Codable, Sendable {
     public var description: String?
 }
 
+/// Session model state
+public struct SessionModelState: Codable, Sendable {
+    /// Available models
+    public var availableModels: [SessionModel]
+    
+    /// Current model ID
+    public var currentModelId: String?
+}
+
+/// A session model
+public struct SessionModel: Codable, Sendable, Identifiable {
+    public var id: String { modelId }
+    
+    /// Model identifier (e.g., "gpt-5.2-codex (medium)")
+    public var modelId: String
+    
+    /// Human-readable display name
+    public var name: String
+    
+    /// Optional description
+    public var description: String?
+    
+    public init(modelId: String, name: String, description: String? = nil) {
+        self.modelId = modelId
+        self.name = name
+        self.description = description
+    }
+}
+
 /// Request to load an existing session
 public struct LoadSessionRequest: Codable, Sendable {
     /// Session ID to load
@@ -197,7 +229,11 @@ public struct LoadSessionResponse: Codable, Sendable {
     
     /// Session mode state
     public var modes: SessionModeState?
+    
+    /// Session model state
+    public var models: SessionModelState?
 }
+
 
 // MARK: - Set Session Model
 
