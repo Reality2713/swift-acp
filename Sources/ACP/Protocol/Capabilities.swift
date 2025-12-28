@@ -67,16 +67,17 @@ public struct FileSystemCapability: Codable, Sendable, Hashable {
     }
 }
 
-/// Configuration for an MCP server the client can provide
-public struct McpServerConfig: Codable, Sendable, Hashable {
+/// Configuration for an MCP server the client can provide.
+/// Note: Per ACP protocol, stdio servers are "untagged" (no type field), while http/sse use type field.
+public struct McpServerConfig: Sendable, Hashable {
     /// Unique identifier for this MCP server
     public var id: String
     
     /// Human-readable name
     public var name: String
     
-    /// Transport type (stdio, sse, http)
-    public var type: String
+    /// Transport type (sse, http). Nil for stdio (untagged per ACP spec).
+    public var type: String?
     
     /// URL for HTTP/SSE transport
     public var url: String?
@@ -96,7 +97,7 @@ public struct McpServerConfig: Codable, Sendable, Hashable {
     public init(
         id: String,
         name: String,
-        type: String,
+        type: String? = nil,
         url: String? = nil,
         headers: [HttpHeader] = [],
         command: String? = nil,
@@ -118,9 +119,42 @@ public struct McpServerConfig: Codable, Sendable, Hashable {
         McpServerConfig(id: id, name: name, type: "http", url: url, headers: headers)
     }
     
-    /// Create a stdio MCP server configuration
+    /// Create a stdio MCP server configuration (no type field per ACP spec)
     public static func stdio(id: String, name: String, command: String, args: [String] = [], env: [EnvVar] = []) -> McpServerConfig {
-        McpServerConfig(id: id, name: name, type: "stdio", command: command, args: args, env: env)
+        McpServerConfig(id: id, name: name, type: nil, command: command, args: args, env: env)
+    }
+}
+
+extension McpServerConfig: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, name, type, url, headers, command, args, env
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        // Only encode type if non-nil (stdio is untagged)
+        if let type = type {
+            try container.encode(type, forKey: .type)
+        }
+        try container.encodeIfPresent(url, forKey: .url)
+        try container.encode(headers, forKey: .headers)
+        try container.encodeIfPresent(command, forKey: .command)
+        try container.encode(args, forKey: .args)
+        try container.encode(env, forKey: .env)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        type = try container.decodeIfPresent(String.self, forKey: .type)
+        url = try container.decodeIfPresent(String.self, forKey: .url)
+        headers = try container.decodeIfPresent([HttpHeader].self, forKey: .headers) ?? []
+        command = try container.decodeIfPresent(String.self, forKey: .command)
+        args = try container.decodeIfPresent([String].self, forKey: .args) ?? []
+        env = try container.decodeIfPresent([EnvVar].self, forKey: .env) ?? []
     }
 }
 
