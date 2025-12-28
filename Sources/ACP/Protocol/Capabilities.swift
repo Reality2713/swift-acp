@@ -132,17 +132,25 @@ extension McpServerConfig: Codable {
     
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(id, forKey: .id)
-        try container.encode(name, forKey: .name)
-        // Only encode type if non-nil (stdio is untagged)
-        if let type = type {
+        
+        // For stdio transport (type == nil), only encode name/command/args/env per ACP spec
+        if type == nil {
+            // McpServerStdio schema: name, command, args, env only
+            try container.encode(name, forKey: .name)
+            try container.encodeIfPresent(command, forKey: .command)
+            try container.encode(args, forKey: .args)
+            try container.encode(env, forKey: .env)
+        } else {
+            // HTTP/SSE: include all fields
+            try container.encode(id, forKey: .id)
+            try container.encode(name, forKey: .name)
             try container.encode(type, forKey: .type)
+            try container.encodeIfPresent(url, forKey: .url)
+            try container.encode(headers, forKey: .headers)
+            try container.encodeIfPresent(command, forKey: .command)
+            try container.encode(args, forKey: .args)
+            try container.encode(env, forKey: .env)
         }
-        try container.encodeIfPresent(url, forKey: .url)
-        try container.encode(headers, forKey: .headers)
-        try container.encodeIfPresent(command, forKey: .command)
-        try container.encode(args, forKey: .args)
-        try container.encode(env, forKey: .env)
     }
     
     public init(from decoder: Decoder) throws {
