@@ -182,7 +182,7 @@ public struct AnyCodable: Codable, @unchecked Sendable {
     
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
-        
+
         switch value {
         case is NSNull:
             try container.encodeNil()
@@ -198,6 +198,8 @@ public struct AnyCodable: Codable, @unchecked Sendable {
             try container.encode(array.map { AnyCodable($0) })
         case let dictionary as [String: Any]:
             try container.encode(dictionary.mapValues { AnyCodable($0) })
+        case let wrapped as AnyCodable:
+            try wrapped.encode(to: encoder)
         default:
             throw EncodingError.invalidValue(value, EncodingError.Context(codingPath: [], debugDescription: "Unsupported type"))
         }
