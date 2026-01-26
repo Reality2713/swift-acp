@@ -199,6 +199,27 @@ public enum ToolCallStatus: String, Codable, Sendable {
     case complete = "complete"
     case failed = "failed"
     case cancelled = "cancelled"
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        switch value {
+        case "pending": self = .pending
+        case "running": self = .running
+        case "in_progress": self = .running
+        case "complete": self = .complete
+        case "completed": self = .complete
+        case "failed": self = .failed
+        case "cancelled": self = .cancelled
+        default:
+            self = .running
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 /// Result of a tool call

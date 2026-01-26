@@ -228,7 +228,8 @@ actor ProcessTransport {
         let data = try JSONSerialization.data(withJSONObject: response)
         
         // Debug log the response
-        if let jsonStr = String(data: data, encoding: .utf8) {
+        if ProcessInfo.processInfo.environment["ACP_VERBOSE"] == "1",
+           let jsonStr = String(data: data, encoding: .utf8) {
             print("[ACP Transport] -> \(jsonStr)")
         }
         
@@ -282,7 +283,8 @@ actor ProcessTransport {
         let data = try encoder.encode(message)
         
         // Debug Log
-        if let jsonStr = String(data: data, encoding: .utf8) {
+        if ProcessInfo.processInfo.environment["ACP_VERBOSE"] == "1",
+           let jsonStr = String(data: data, encoding: .utf8) {
             print("[ACP Transport] -> \(jsonStr)")
         }
         
@@ -389,7 +391,9 @@ actor ProcessTransport {
             return
         }
         
-        print("[ACP Transport] <- \(line)")
+        if ProcessInfo.processInfo.environment["ACP_VERBOSE"] == "1" {
+            print("[ACP Transport] <- \(line)")
+        }
         
         do {
             let message = try IncomingMessage.parse(data)
