@@ -20,6 +20,71 @@ public final class ACPClient: Sendable {
     private var agentInfo: AgentInfo?
     private var agentCapabilities: AgentCapabilities?
     private var currentSessionId: SessionID?
+    private let timingEnabled = ProcessInfo.processInfo.environment["ACP_TIMING"] == "1"
+    private var promptTimings: [SessionID: PromptTiming] = [:]
+    private var promptSequenceBySession: [SessionID: Int] = [:]
+    private var toolTimings: [String: DispatchTime] = [:]
+    private let batchingEnabled = ProcessInfo.processInfo.environment["ACP_BATCHING"] != "0"
+    private let batchIntervalNs: UInt64 = {
+        if let raw = ProcessInfo.processInfo.environment["ACP_BATCH_MS"],
+           let ms = UInt64(raw) {
+            return ms * 1_000_000
+        }
+        return 50_000_000
+    }()
+    private var updateBuffers: [SessionID: UpdateBuffer] = [:]
+    private var flushTasks: [SessionID: Task<Void, Never>] = [:]
+
+    private struct PromptTiming {
+        let sequence: Int
+        let start: DispatchTime
+        var responseAt: DispatchTime?
+        var firstMessageAt: DispatchTime?
+        var firstToolCallAt: DispatchTime?
+        var messageChunkCount: Int
+        var totalTextBytes: Int
+    }
+
+    private struct UpdateBuffer {
+        var messageChunks: [MessageChunk] = []
+        var toolCalls: [ToolCallUpdate] = []
+        var plan: Plan?
+        var commands: [SlashCommand]?
+        var modes: SessionModeState?
+
+        mutating func merge(_ update: SessionUpdate) {
+            if let chunks = update.messageChunks {
+                messageChunks.append(contentsOf: chunks)
+            }
+            if let calls = update.toolCalls {
+                toolCalls.append(contentsOf: calls)
+            }
+            if let plan = update.plan {
+                self.plan = plan
+            }
+            if let commands = update.commands {
+                self.commands = commands
+            }
+            if let modes = update.modes {
+                self.modes = modes
+            }
+        }
+
+        func toSessionUpdate() -> SessionUpdate? {
+            let hasChunks = !messageChunks.isEmpty
+            let hasCalls = !toolCalls.isEmpty
+            if !hasChunks, !hasCalls, plan == nil, commands == nil, modes == nil {
+                return nil
+            }
+            return SessionUpdate(
+                messageChunks: hasChunks ? messageChunks : nil,
+                toolCalls: hasCalls ? toolCalls : nil,
+                plan: plan,
+                commands: commands,
+                modes: modes
+            )
+        }
+    }
 
     /// Delegate for handling agent requests and notifications
     public weak var delegate: ACPClientDelegate?
@@ -202,12 +267,14 @@ public final class ACPClient: Sendable {
             throw ACPError.noActiveSession
         }
 
+        startPromptTiming(sessionId: sid, label: "text")
         let request = PromptRequest(sessionId: sid, text: text)
 
         let response: PromptResponse = try await transport.sendRequest(
             method: "session/prompt",
             params: request
         )
+        markPromptResponse(sessionId: sid)
 
         return response
     }
@@ -222,12 +289,14 @@ public final class ACPClient: Sendable {
             throw ACPError.noActiveSession
         }
 
+        startPromptTiming(sessionId: sid, label: "content")
         let request = PromptRequest(sessionId: sid, content: content)
 
         let response: PromptResponse = try await transport.sendRequest(
             method: "session/prompt",
             params: request
         )
+        markPromptResponse(sessionId: sid)
 
         return response
     }
@@ -312,11 +381,121 @@ public final class ACPClient: Sendable {
         switch method {
         case "session/update":
             if let notification = try? decoder.decode(SessionUpdateNotification.self, from: params) {
-                delegate?.client(self, didReceiveUpdate: notification.update)
+                handleSessionUpdateTiming(sessionId: notification.sessionId, update: notification.update)
+                if batchingEnabled {
+                    enqueueUpdate(sessionId: notification.sessionId, update: notification.update)
+                } else {
+                    delegate?.client(self, didReceiveUpdate: notification.update)
+                }
             }
         default:
             break
         }
+    }
+
+    private func startPromptTiming(sessionId: SessionID, label: String) {
+        guard timingEnabled else { return }
+        let nextSeq = (promptSequenceBySession[sessionId] ?? 0) + 1
+        promptSequenceBySession[sessionId] = nextSeq
+        promptTimings[sessionId] = PromptTiming(
+            sequence: nextSeq,
+            start: DispatchTime.now(),
+            responseAt: nil,
+            firstMessageAt: nil,
+            firstToolCallAt: nil,
+            messageChunkCount: 0,
+            totalTextBytes: 0
+        )
+        print("[ACP Timing] prompt.start session=\(sessionId) seq=\(nextSeq) label=\(label)")
+    }
+
+    private func markPromptResponse(sessionId: SessionID) {
+        guard timingEnabled, var timing = promptTimings[sessionId] else { return }
+        let now = DispatchTime.now()
+        timing.responseAt = now
+        promptTimings[sessionId] = timing
+        let elapsedMs = Double(now.uptimeNanoseconds - timing.start.uptimeNanoseconds) / 1_000_000
+        print("[ACP Timing] prompt.response session=\(sessionId) seq=\(timing.sequence) ms=\(String(format: "%.2f", elapsedMs))")
+    }
+
+    private func handleSessionUpdateTiming(sessionId: SessionID, update: SessionUpdate) {
+        guard timingEnabled, var timing = promptTimings[sessionId] else { return }
+        let now = DispatchTime.now()
+
+        if let chunks = update.messageChunks {
+            for chunk in chunks {
+                timing.messageChunkCount += 1
+                if let text = chunk.text {
+                    timing.totalTextBytes += text.utf8.count
+                } else if let data = chunk.data {
+                    timing.totalTextBytes += data.utf8.count
+                }
+                if timing.firstMessageAt == nil {
+                    timing.firstMessageAt = now
+                    let sinceStart = Double(now.uptimeNanoseconds - timing.start.uptimeNanoseconds) / 1_000_000
+                    if let responseAt = timing.responseAt {
+                        let sinceResponse = Double(now.uptimeNanoseconds - responseAt.uptimeNanoseconds) / 1_000_000
+                        print("[ACP Timing] prompt.first_message session=\(sessionId) seq=\(timing.sequence) ms=\(String(format: "%.2f", sinceStart)) sinceResponse=\(String(format: "%.2f", sinceResponse))")
+                    } else {
+                        print("[ACP Timing] prompt.first_message session=\(sessionId) seq=\(timing.sequence) ms=\(String(format: "%.2f", sinceStart))")
+                    }
+                } else if timing.messageChunkCount % 200 == 0 {
+                    let sinceStart = Double(now.uptimeNanoseconds - timing.start.uptimeNanoseconds) / 1_000_000
+                    print("[ACP Timing] prompt.chunk_progress session=\(sessionId) seq=\(timing.sequence) chunks=\(timing.messageChunkCount) bytes=\(timing.totalTextBytes) ms=\(String(format: "%.2f", sinceStart))")
+                }
+            }
+        }
+
+        if let toolCalls = update.toolCalls {
+            for call in toolCalls {
+                if timing.firstToolCallAt == nil {
+                    timing.firstToolCallAt = now
+                    let sinceStart = Double(now.uptimeNanoseconds - timing.start.uptimeNanoseconds) / 1_000_000
+                    print("[ACP Timing] prompt.first_tool_call session=\(sessionId) seq=\(timing.sequence) ms=\(String(format: "%.2f", sinceStart)) toolId=\(call.id) status=\(call.status.rawValue)")
+                }
+
+                if toolTimings[call.id] == nil, call.status == .running || call.status == .pending {
+                    toolTimings[call.id] = now
+                    let sinceStart = Double(now.uptimeNanoseconds - timing.start.uptimeNanoseconds) / 1_000_000
+                    print("[ACP Timing] tool.start session=\(sessionId) seq=\(timing.sequence) toolId=\(call.id) status=\(call.status.rawValue) ms=\(String(format: "%.2f", sinceStart))")
+                }
+
+                if call.status == .complete || call.status == .failed || call.status == .cancelled {
+                    if let startedAt = toolTimings.removeValue(forKey: call.id) {
+                        let toolMs = Double(now.uptimeNanoseconds - startedAt.uptimeNanoseconds) / 1_000_000
+                        print("[ACP Timing] tool.end session=\(sessionId) seq=\(timing.sequence) toolId=\(call.id) status=\(call.status.rawValue) ms=\(String(format: "%.2f", toolMs))")
+                    }
+                }
+            }
+        }
+
+        promptTimings[sessionId] = timing
+    }
+
+    private func enqueueUpdate(sessionId: SessionID, update: SessionUpdate) {
+        var buffer = updateBuffers[sessionId] ?? UpdateBuffer()
+        buffer.merge(update)
+        updateBuffers[sessionId] = buffer
+
+        if flushTasks[sessionId] == nil {
+            let interval = batchIntervalNs
+            flushTasks[sessionId] = Task { [weak self] in
+                try? await Task.sleep(nanoseconds: interval)
+                await MainActor.run {
+                    self?.flushBufferedUpdates(sessionId: sessionId)
+                }
+            }
+        }
+    }
+
+    private func flushBufferedUpdates(sessionId: SessionID) {
+        flushTasks[sessionId] = nil
+        guard let buffer = updateBuffers.removeValue(forKey: sessionId),
+              let update = buffer.toSessionUpdate()
+        else {
+            return
+        }
+        delegate?.client(self, didReceiveUpdate: update)
     }
 
     private func handleAgentRequest(id: RequestID, method: String, params: Data?) async {

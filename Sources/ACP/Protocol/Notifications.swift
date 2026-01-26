@@ -34,6 +34,20 @@ public struct SessionUpdate: Codable, Sendable {
     
     /// Mode changes
     public var modes: SessionModeState?
+
+    public init(
+        messageChunks: [MessageChunk]? = nil,
+        toolCalls: [ToolCallUpdate]? = nil,
+        plan: Plan? = nil,
+        commands: [SlashCommand]? = nil,
+        modes: SessionModeState? = nil
+    ) {
+        self.messageChunks = messageChunks
+        self.toolCalls = toolCalls
+        self.plan = plan
+        self.commands = commands
+        self.modes = modes
+    }
     
     public init(from decoder: Decoder) throws {
         // Try decoding as a tagged union first

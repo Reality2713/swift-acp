@@ -17,6 +17,15 @@ actor HTTPTransport {
 
     private var pendingRequests: [RequestID: CheckedContinuation<Data, Error>] = [:]
     private var requestCounter: Int = 0
+    private var requestTimings: [RequestID: RequestTiming] = [:]
+
+    private let timingEnabled = ProcessInfo.processInfo.environment["ACP_TIMING"] == "1"
+
+    private struct RequestTiming {
+        let method: String
+        let start: DispatchTime
+        let payloadBytes: Int
+    }
 
     private var messageHandler: (@Sendable (IncomingMessage) async -> Void)?
     private var pollingTask: Task<Void, Never>?
@@ -101,9 +110,23 @@ actor HTTPTransport {
 
             Task {
                 do {
+                    if timingEnabled {
+                        let encoder = JSONEncoder()
+                        encoder.outputFormatting = .withoutEscapingSlashes
+                        let payloadBytes = (try? encoder.encode(request).count) ?? 0
+                        requestTimings[id] = RequestTiming(
+                            method: method,
+                            start: DispatchTime.now(),
+                            payloadBytes: payloadBytes
+                        )
+                        print("[ACP Timing] request.start id=\(id) method=\(method) bytes=\(payloadBytes)")
+                    }
                     try await send(request)
                 } catch {
                     pendingRequests.removeValue(forKey: id)
+                    if timingEnabled {
+                        requestTimings.removeValue(forKey: id)
+                    }
                     continuation.resume(throwing: error)
                 }
             }
@@ -246,12 +269,20 @@ actor HTTPTransport {
     private func handleMessage(_ message: IncomingMessage) async {
         switch message {
         case .response(let id, let result):
+            if timingEnabled, let timing = requestTimings.removeValue(forKey: id) {
+                let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - timing.start.uptimeNanoseconds) / 1_000_000
+                print("[ACP Timing] request.end id=\(id) method=\(timing.method) ms=\(String(format: "%.2f", elapsedMs)) responseBytes=\(result.count)")
+            }
             if let continuation = pendingRequests.removeValue(forKey: id) {
                 continuation.resume(returning: result)
             }
             await messageHandler?(message)
 
         case .error(let id, let error):
+            if timingEnabled, let id, let timing = requestTimings.removeValue(forKey: id) {
+                let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - timing.start.uptimeNanoseconds) / 1_000_000
+                print("[ACP Timing] request.error id=\(id) method=\(timing.method) ms=\(String(format: "%.2f", elapsedMs)) error=\(error.message)")
+            }
             if let id, let continuation = pendingRequests.removeValue(forKey: id) {
                 continuation.resume(throwing: error)
             }
