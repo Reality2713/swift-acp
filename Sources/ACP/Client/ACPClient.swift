@@ -237,10 +237,10 @@ public final class ACPClient: Sendable {
         if Self.isVerboseLoggingEnabled {
             Self.logger.debug("[ACP] Session created: \(response.sessionId, privacy: .public)")
             if let modes = response.modes {
-                Self.logger.debug("[ACP] Available modes: \(modes.available.map { $0.id }.joined(separator: \",\"), privacy: .public)")
+                Self.logger.debug("[ACP] Available modes: \(modes.available.map { $0.id }.joined(separator: ","), privacy: .public)")
             }
             if let models = response.models {
-                Self.logger.debug("[ACP] Available models: \(models.availableModels.map { $0.name }.joined(separator: \",\"), privacy: .public)")
+                Self.logger.debug("[ACP] Available models: \(models.availableModels.map { $0.name }.joined(separator: ","), privacy: .public)")
                 Self.logger.debug("[ACP] Current model: \(models.currentModelId ?? "none", privacy: .public)")
             }
         }

@@ -13,6 +13,11 @@ actor ProcessTransport {
     
     // MARK: - Properties
     
+    private static let logger = Logger(subsystem: "io.210x7.swift-acp", category: "transport")
+    private static var isVerboseLoggingEnabled: Bool {
+        ProcessInfo.processInfo.environment["ACP_VERBOSE"] == "1"
+    }
+
     private let command: String
     private let arguments: [String]
     private let workingDirectory: URL?
@@ -110,7 +115,7 @@ actor ProcessTransport {
         if Self.isVerboseLoggingEnabled {
             let fullCommand = "\(command) \(arguments.joined(separator: " "))"
             Self.logger.debug("[ACP Transport] Launching: \(fullCommand, privacy: .public)")
-            Self.logger.debug("[ACP Transport] Working directory: \(workingDirectory?.path ?? "default", privacy: .public)")
+            Self.logger.debug("[ACP Transport] Working directory: \(self.workingDirectory?.path ?? "default", privacy: .public)")
             Self.logger.debug("[ACP Transport] PATH includes: \(String(env["PATH"]?.prefix(200) ?? "nil"), privacy: .public)...")
         }
         
