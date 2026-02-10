@@ -253,7 +253,7 @@ final class SchemaTests: XCTestCase {
         
         XCTAssertEqual(json["sessionId"] as? String, "sess123")
         
-        let content = json["content"] as? [[String: Any]]
+        let content = json["prompt"] as? [[String: Any]]
         XCTAssertEqual(content?.first?["type"] as? String, "text")
         XCTAssertEqual(content?.first?["text"] as? String, "Hello, agent!")
     }

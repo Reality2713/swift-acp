@@ -5,6 +5,7 @@
 //  Typed meta helpers for Claude Code options.
 //
 
+import ACP
 import Foundation
 
 /// Typed metadata for Claude Code session configuration

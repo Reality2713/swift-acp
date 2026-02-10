@@ -15,11 +15,20 @@ let package = Package(
             name: "ACP",
             targets: ["ACP"]
         ),
+        .library(
+            name: "ACPExtras",
+            targets: ["ACPExtras"]
+        ),
     ],
     targets: [
         .target(
             name: "ACP",
             path: "Sources/ACP"
+        ),
+        .target(
+            name: "ACPExtras",
+            dependencies: ["ACP"],
+            path: "Sources/ACPExtras"
         ),
         .testTarget(
             name: "ACPTests",
