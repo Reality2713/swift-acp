@@ -1,15 +1,24 @@
 # Agent Communication Protocol SDK for Swift
 
-`swift-acp` helps developers to serve and consume agents over the Agent Communication Protocol. Built with Swift 6, it enables seamless integration between Apple platforms and AI coding agents.
+`swift-acp` is a high-performance Swift SDK for the [Agent Communication Protocol (ACP)](https://agentcommunicationprotocol.dev), designed to bridge the gap between Apple platforms and AI coding agents.
+
+Built with Swift 6 and modern concurrency, it provides a seamless type-safe interface to connect, communicate, and collaborate with AI agents like Claude Code, Gemini, and others.
 
 ---
 
-## Prerequisites
+## ⚡️ Key Features
 
-- ✅ Swift >= 6.0
-- ✅ macOS 15+ / iOS 18+ / visionOS 2+
+- **🚀 Multi-Transport Support**: Connect via local subprocess (`ProcessTransport`) or remote servers (`HTTPTransport`).
+- **🛡️ Native Delegate API**: Handle permissions, file operations, and tool calls with a clean, async-await delegate pattern.
+- **🛠️ Client-Side Tools**: Expose your app's functions as tools the agent can call directly.
+- **📂 File System Integration**: Let agents read and write files safely within your app's sandbox.
+- **🤖 Claude Code First-Class Support**: Typed metadata for Claude Code options (`autoApproveTools`, `maxParallelToolCalls`, etc).
+- **⏱️ Performance Logging**: Built-in timing and batching for high-throughput coding tasks.
+- **🔌 MCP Bridge**: Includes a minimal MCP server implementation for tool exposure to standard MCP clients.
 
-## Installation
+---
+
+## 📦 Installation
 
 Add the dependency to your `Package.swift`:
 
@@ -19,11 +28,9 @@ dependencies: [
 ]
 ```
 
-## Quickstart
+## 🚀 Quickstart
 
-### Process Transport (Local CLI Agents)
-
-For connecting to local agents like Claude Code:
+### 1. Connecting to a Local Agent (e.g., Claude Code)
 
 ```swift
 import ACP
@@ -35,85 +42,109 @@ let client = ACPClient(
 )
 
 try await client.connect()
-let sessionId = try await client.newSession()
-let response = try await client.prompt("Analyze the current directory")
+let session = try await client.newSession(workingDirectory: URL(fileURLWithPath: "/path/to/project"))
+
+let response = try await client.prompt("Explain the architecture of this project")
+print(response.stopReason)
 ```
 
-### HTTP Transport (Remote Servers)
+### 2. Implementing the Delegate
 
-For connecting to remote ACP servers:
-
-```swift
-import ACP
-
-let serverURL = URL(string: "http://localhost:8000")!
-let client = ACPClient(
-    serverURL: serverURL,
-    clientInfo: ClientInfo(name: "MyApp", version: "1.0")
-)
-
-try await client.connect()
-let sessionId = try await client.newSession()
-let response = try await client.prompt("Hello, agent!")
-```
-
-### Handling Agent Actions
-
-Implement `ACPClientDelegate` to handle the agent's interaction with your app:
+Most interaction happens through `ACPClientDelegate`. Assign it to handle agent requests.
 
 ```swift
-class MyAgentHandler: ACPClientDelegate {
+class AppAgentHandler: ACPClientDelegate {
+    // Handle status updates (streaming text, plans, tools)
     func client(_ client: ACPClient, didReceiveUpdate update: SessionUpdate) {
-        // Handle streaming text, tool progress, and plans
+        if let chunks = update.messageChunks {
+            for chunk in chunks {
+                print(chunk.text ?? "", terminator: "")
+            }
+        }
     }
 
+    // Handle security permissions
     func client(_ client: ACPClient, requestPermission request: RequestPermissionRequest) async -> PermissionOptionID {
-        // Show a native dialog: allow_once, allow_always, reject
+        // Return "allow_once", "allow_always", "reject_once", etc.
         return "allow_once"
+    }
+
+    // Provide tools to the agent
+    func listTools(_ client: ACPClient) async -> [ToolDefinition] {
+        return [
+            ToolDefinition(
+                name: "reveal_in_finder",
+                description: "Reveals a file in macOS Finder",
+                parameters: ["path": AnyCodable("string")]
+            )
+        ]
     }
 }
 ```
 
 ---
 
-## Transport Options
+## 💎 Advanced Capabilities
 
-| Transport | Use Case | Constructor |
-|-----------|----------|-------------|
-| **Process** | Local CLI agents (claude, gemini) | `ACPClient(command:...)` |
-| **HTTP** | Remote ACP servers | `ACPClient(serverURL:...)` |
+### Claude Code Optimization
+Configure Claude Code specific behaviors via typed metadata:
+
+```swift
+let meta = ClaudeCodeMeta.autoApprove(except: ["rm", "git_push"])
+try await client.newSession(meta: meta.toDictionary())
+```
+
+### Model & Mode Switching
+Agents often support multiple modes (e.g., `architect`, `code`, `ask`) and models.
+
+```swift
+// Switch model mid-session
+try await client.setSessionModel("claude-3-5-sonnet-20241022")
+
+// Switch session mode
+try await client.setSessionMode("architect")
+```
+
+### Performance & Debugging
+Enable verbose logging or timing by setting environment variables:
+
+- `ACP_VERBOSE=1`: Detailed JSON-RPC message logs.
+- `ACP_TIMING=1`: Performance metrics for prompt response times and tool execution.
+- `ACP_BATCHING=1`: Enables message chunk batching for smoother UI updates.
 
 ---
 
-## API Comparison
+## 🧱 Project Structure
 
-| Feature | Swift | Python | TypeScript |
-|---------|-------|--------|------------|
-| **Client class** | `ACPClient` | `Client` | `Client` |
-| **Server class** | — | `Server` | — |
-| **Process transport** | ✅ | — | — |
-| **HTTP transport** | ✅ | ✅ | ✅ |
-| **Connect** | `connect()` | Context manager | Context manager |
-| **Run agent** | `prompt()` | `run_sync()` | `runSync()` |
-| **Session mgmt** | ✅ | — | — |
-| **Model switching** | ✅ | — | — |
-| **Cancel** | ✅ | — | — |
-| **Permissions** | Delegate | — | — |
+- `Sources/ACP`: Core SDK logic.
+  - `Client`: Main `ACPClient` and delegate protocols.
+  - `Protocol`: Type-safe models for ACP 0.3.0.
+  - `Transport`: IPC (Process) and Network (HTTP) communication layers.
+  - `Server`: Minimal `MCPServer` actor for exposing tools to other clients.
+
+---
+
+## 🗺️ API Comparison
+
+| Feature | `swift-acp` | Other SDKs |
+|---------|:---:|:---:|
+| **Language Support** | Swift 6 / Apple Platforms | Python / TS |
+| **Local Process (IPC)** | ✅ (Native) | ❌ |
+| **HTTP Transport** | ✅ | ✅ |
+| **Async/Await Native** | ✅ | ✅ |
+| **Tool Registration** | ✅ | ✅ |
+| **FileSystem Ops** | ✅ | ✅ |
+| **Claude Metadata** | ✅ | ❌ |
+| **MCP Bridge** | ✅ (Built-in) | ❌ |
+
+---
+
+## 📄 License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
 
 ---
 
 > [!TIP]
-> Explore the full API in the [ACP documentation](https://agentcommunicationprotocol.dev).
+> Developed for **Preflight** – The next-gen spatial AI IDE for Apple Vision Pro.
 
----
-
-## Related SDKs
-
-- [Python SDK](https://github.com/i-am-bee/acp/tree/main/python)
-- [TypeScript SDK](https://github.com/i-am-bee/acp/tree/main/typescript)
-
----
-
-## License
-
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
